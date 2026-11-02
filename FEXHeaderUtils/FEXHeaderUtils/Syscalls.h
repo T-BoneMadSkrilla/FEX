@@ -7,7 +7,10 @@
 #include <sched.h>
 #include <signal.h>
 #include <stdio.h>
-#ifndef _WIN32
+#if defined(__APPLE__)
+#include <pthread.h>
+#include <stdlib.h>
+#elif !defined(_WIN32)
 #include <syscall.h>
 #else
 #include <processthreadsapi.h>
@@ -51,7 +54,33 @@ namespace FHU::Syscalls {
 #define SYS_pidfd_open 434
 #endif
 
-#ifndef _WIN32
+#if defined(__APPLE__)
+inline int32_t getcpu(uint32_t* cpu, uint32_t* node) {
+  if (cpu) {
+    *cpu = 0;
+  }
+  if (node) {
+    *node = 0;
+  }
+  return 0;
+}
+
+inline int32_t gettid() {
+  uint64_t Tid {};
+  pthread_threadid_np(nullptr, &Tid);
+  return static_cast<int32_t>(Tid);
+}
+
+inline int32_t tgkill(pid_t tgid, pid_t tid, int sig) {
+  ERROR_AND_DIE_FMT("Unsupported");
+  return 0;
+}
+
+inline ssize_t getrandom(void* buf, size_t buflen, unsigned int flags) {
+  arc4random_buf(buf, buflen);
+  return static_cast<ssize_t>(buflen);
+}
+#elif !defined(_WIN32)
 inline int32_t getcpu(uint32_t* cpu, uint32_t* node) {
   // Third argument is unused
 #if defined(HAS_SYSCALL_GETCPU) && HAS_SYSCALL_GETCPU

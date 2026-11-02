@@ -17,6 +17,7 @@ $end_info$
 #include "Interface/Core/Interpreter/InterpreterOps.h"
 #include "Interface/Core/JIT/DebugData.h"
 #include "Interface/Core/JIT/JITClass.h"
+#include <FEXCore/Utils/JITWriteScope.h>
 #include "Interface/IR/Passes/RegisterAllocationPass.h"
 
 #include "Utils/MemberFunctionToPointer.h"
@@ -533,6 +534,7 @@ void Arm64JITCore::Op_Unhandled(const IR::IROp_Header* IROp, IR::Ref Node) {
 }
 
 static void DirectBlockDelinker(FEXCore::Context::ExitFunctionLinkData* Record, bool Call) {
+  FEXCore::Utils::JITWriteScope JITWrite;
   uintptr_t JumpThunkStartAddress = reinterpret_cast<uintptr_t>(Record) - 0x10;
   uintptr_t CallerAddress = JumpThunkStartAddress + Record->CallerOffset;
   auto BranchOffset = JumpThunkStartAddress / 4 - CallerAddress / 4;
@@ -551,6 +553,7 @@ static void DirectBlockDelinker(FEXCore::Context::ExitFunctionLinkData* Record, 
 }
 
 static void IndirectBlockDelinker(FEXCore::Context::ExitFunctionLinkData* Record) {
+  FEXCore::Utils::JITWriteScope JITWrite;
   uintptr_t JumpThunkStartAddress = reinterpret_cast<uintptr_t>(Record) - 0x10;
   uint32_t BranchInst = 0;
   ARMEmitter::Emitter BranchEmit(reinterpret_cast<uint8_t*>(&BranchInst), 4);
@@ -604,6 +607,7 @@ uint64_t Arm64JITCore::ExitFunctionLink(FEXCore::Core::CpuStateFrame* Frame, FEX
 
   // Lock here is necessary to prevent simultaneous linking and delinking
   auto lk = Thread->LookupCache->AcquireWriteLock();
+  FEXCore::Utils::JITWriteScope JITWrite;
 
   // For non-calls, this would extend into the block's code, however that's fine as an out-of-range adr would never
   // be generated avoiding any false positives.
@@ -879,6 +883,7 @@ CodeBuffer::CodeBufferAllocation Arm64JITCore::AllocateCodeBufferInSharedCache(s
 
 CPUBackend::CompiledCode Arm64JITCore::CompileCode(uint64_t Entry, uint64_t Size, bool SingleInst, const FEXCore::IR::IRListView* IR,
                                                    FEXCore::Core::DebugData* DebugData, bool CheckTF) {
+  FEXCore::Utils::JITWriteScope JITWrite;
   FEXCORE_PROFILE_SCOPED("Arm64::CompileCode");
 
   const auto PrevNumAllocations = Relocations.size();
@@ -1201,6 +1206,7 @@ CPUBackend::CompiledCode Arm64JITCore::CompileCode(uint64_t Entry, uint64_t Size
 }
 
 CPUBackend::CompiledCode Arm64JITCore::LoadCachedCode(std::span<const uint8_t> HostBytes) {
+  FEXCore::Utils::JITWriteScope JITWrite;
   // we stored it aligned, better still be?
   LOGMAN_THROW_A_FMT(HostBytes.size() % 16 == 0, "Needs to be 16B aligned!");
   auto AllocatedInfo = AllocateCodeBufferInSharedCache(HostBytes.size());

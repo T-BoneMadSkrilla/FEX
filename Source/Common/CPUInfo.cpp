@@ -6,14 +6,14 @@
 
 #include <cstddef>
 #include <cstdint>
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
 #include <thread>
 #else
 #include <linux/limits.h>
 #endif
 
 namespace FEX::CPUInfo {
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__APPLE__)
 uint32_t CalculateNumberOfCPUs() {
   constexpr auto parse_string = FMT_COMPILE("/sys/devices/system/cpu/cpu{}");
   constexpr auto max_parse_size = ::fmt::formatted_size(parse_string, UINT32_MAX);

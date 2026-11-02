@@ -234,7 +234,10 @@ DEF_OP(ProcessorID) {
     mrs(GetReg(Node), ARMEmitter::SystemRegister::TPIDRRO_EL0);
     return;
   }
-#ifdef _WIN32
+#if defined(__APPLE__)
+  // Darwin has no getcpu syscall: report CPU 0, node 0.
+  movz(ARMEmitter::Size::i64Bit, GetReg(Node), 0);
+#elif defined(_WIN32)
   else {
     // If on Windows and TPIDRRO isn't supported (like in wine), then this is a programming error.
     ERROR_AND_DIE_FMT("Unsupported");

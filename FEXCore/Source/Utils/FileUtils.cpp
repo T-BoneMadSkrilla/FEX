@@ -15,6 +15,51 @@
 static inline ssize_t getdents64(int fd, void* dirp, size_t count) {
   return ::syscall(SYS_getdents64, fd, dirp, count);
 }
+#elif defined(__APPLE__)
+#include <cerrno>
+#include <cstring>
+// Darwin has no getdents64: native dirent records from a directory stream over a dup of fd,
+// one stream per fd at a time, read through to the end (as the callers here do).
+static inline ssize_t getdents64(int fd, void* dirp, size_t count) {
+  struct Stream {
+    int Fd = -1;
+    DIR* Dir = nullptr;
+    struct dirent* Pending = nullptr;
+  };
+  static thread_local Stream S;
+  if (S.Fd != fd) {
+    if (S.Dir) {
+      closedir(S.Dir);
+    }
+    S = {fd, fdopendir(dup(fd)), nullptr};
+    if (!S.Dir) {
+      S.Fd = -1;
+      return -1;
+    }
+  }
+  size_t Used = 0;
+  for (;;) {
+    struct dirent* E = S.Pending ? S.Pending : readdir(S.Dir);
+    S.Pending = nullptr;
+    if (!E) {
+      if (!Used) {
+        closedir(S.Dir);
+        S = {};
+      }
+      return static_cast<ssize_t>(Used);
+    }
+    if (Used + E->d_reclen > count) {
+      S.Pending = E;
+      if (!Used) {
+        errno = EINVAL;
+        return -1;
+      }
+      return static_cast<ssize_t>(Used);
+    }
+    memcpy(static_cast<uint8_t*>(dirp) + Used, E, E->d_reclen);
+    Used += E->d_reclen;
+  }
+}
 #endif
 #else
 #include <windows.h>

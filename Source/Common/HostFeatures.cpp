@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 #include "Common/CPUInfo.h"
 #include "Common/HostFeatures.h"
-#ifndef _WIN32
+#if defined(__APPLE__)
+#include <cstdio>
+#include <sys/sysctl.h>
+#elif !defined(_WIN32)
 #include "Common/Linux/LinuxVersion.h"
 #endif
 
@@ -41,6 +44,50 @@ void FillMIDRInformationViaLinux(FEXCore::HostFeatures* Features) {
 #endif
 }
 
+#if defined(__APPLE__) && defined(ARCHITECTURE_arm64)
+// Darwin doesn't emulate EL0 reads of the ID registers as Linux does (they raise SIGILL):
+// the kernel reports each feature as hw.optional.arm.FEAT_* instead.
+class CPUFeaturesFromSysctl final : public FEX::CPUFeatures {
+public:
+  CPUFeaturesFromSysctl() {
+    struct Entry {
+      const char* Name;
+      Feature Feat;
+    };
+    static constexpr Entry Table[] = {
+      {"FEAT_AES", Feature::AES},         {"FEAT_PMULL", Feature::PMULL},     {"FEAT_SHA1", Feature::SHA1},
+      {"FEAT_SHA256", Feature::SHA2},     {"FEAT_SHA512", Feature::SHA512},   {"FEAT_CRC32", Feature::CRC32},
+      {"FEAT_LSE", Feature::LSE},         {"FEAT_RDM", Feature::RDM},         {"FEAT_SHA3", Feature::SHA3},
+      {"FEAT_DotProd", Feature::DotProd}, {"FEAT_FlagM", Feature::FlagM},     {"FEAT_FlagM2", Feature::FlagM2},
+      {"FEAT_FP16", Feature::FP16},       {"FEAT_FP16", Feature::ASIMD16},    {"FEAT_DIT", Feature::DIT},
+      {"FEAT_CSV2", Feature::CSV2},       {"FEAT_CSV3", Feature::CSV3},       {"FEAT_BTI", Feature::BTI},
+      {"FEAT_SSBS", Feature::SSBS},       {"FEAT_SME", Feature::SME},         {"FEAT_SME2", Feature::SME2},
+      {"FEAT_DPB", Feature::DPB},         {"FEAT_DPB2", Feature::DPB2},       {"FEAT_JSCVT", Feature::JSCVT},
+      {"FEAT_FCMA", Feature::FCMA},       {"FEAT_LRCPC", Feature::LRCPC},     {"FEAT_LRCPC2", Feature::LRCPC2},
+      {"FEAT_FRINTTS", Feature::FRINTTS}, {"FEAT_SB", Feature::SB},           {"FEAT_SPECRES", Feature::SPECRES},
+      {"FEAT_SPECRES2", Feature::SPECRES2}, {"FEAT_BF16", Feature::BF16},     {"FEAT_I8MM", Feature::I8MM},
+      {"FEAT_ECV", Feature::ECV},         {"FEAT_LSE2", Feature::LSE2},       {"FEAT_AFP", Feature::AFP},
+      {"FEAT_WFxT", Feature::WFxt},       {"FEAT_RPRES", Feature::RPRES},     {"FEAT_HBC", Feature::HBC},
+      {"FEAT_CSSC", Feature::CSSC},
+    };
+    SetFeature(Feature::FP);
+    SetFeature(Feature::ASIMD);
+    for (const auto& E : Table) {
+      char Name[64];
+      snprintf(Name, sizeof(Name), "hw.optional.arm.%s", E.Name);
+      int Value = 0;
+      size_t Size = sizeof(Value);
+      if (sysctlbyname(Name, &Value, &Size, nullptr, 0) == 0 && Value) {
+        SetFeature(E.Feat);
+      }
+    }
+    uint64_t Dczid {};
+    __asm volatile("mrs %[Res], dczid_el0" : [Res] "=r"(Dczid));
+    DCZID.SetReg(Dczid);
+  }
+};
+#endif
+
 #if defined(ARCHITECTURE_arm64) && !defined(VIXL_SIMULATOR)
 __attribute__((naked)) static uint64_t ReadSVEVectorLengthInBits() {
   ///< Can't use rdvl instruction directly because compilers will complain that sve/sme is required.
@@ -57,7 +104,7 @@ static int ReadSVEVectorLengthInBits() {
 }
 #endif
 
-#ifdef ARCHITECTURE_arm64
+#if defined(ARCHITECTURE_arm64) && !defined(__APPLE__)
 #define GetSysReg(name, reg)                         \
   static uint64_t Get_##name() {                     \
     uint64_t Result {};                              \
@@ -613,6 +660,8 @@ FEXCore::HostFeatures FetchHostFeatures() {
     Features.RemoveFeature(CPUFeatures::Feature::AFP);
     // Vixl simulator doesn't support RPRES.
     Features.RemoveFeature(CPUFeatures::Feature::RPRES);
+#elif defined(__APPLE__)
+    Features = CPUFeaturesFromSysctl {};
 #else
     Features = GetCPUFeaturesFromIDRegisters();
 #endif
@@ -620,7 +669,17 @@ FEXCore::HostFeatures FetchHostFeatures() {
 
   uint64_t CTR = 0;
   uint64_t MIDR = 0;
-#if defined(ARCHITECTURE_arm64) && !defined(VIXL_SIMULATOR)
+#if defined(__APPLE__) && defined(ARCHITECTURE_arm64)
+  // Darwin traps EL0 reads of CTR_EL0 and MIDR_EL1 (no errata to match on Apple cores anyway):
+  // CTR's line sizes (log2 of words, DminLine and IminLine) from the cache line sysctl.
+  {
+    uint64_t Line = 64;
+    size_t Size = sizeof(Line);
+    sysctlbyname("hw.cachelinesize", &Line, &Size, nullptr, 0);
+    const uint64_t Log2Words = __builtin_ctzll(Line / 4);
+    CTR = (Log2Words << 16) | Log2Words;
+  }
+#elif defined(ARCHITECTURE_arm64) && !defined(VIXL_SIMULATOR)
   // We need to get the CPU's cache line size
   // We expect sane targets that have correct cacheline sizes across clusters
   __asm volatile("mrs %[ctr], ctr_el0" : [ctr] "=r"(CTR));

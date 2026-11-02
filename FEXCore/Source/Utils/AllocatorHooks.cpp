@@ -127,8 +127,10 @@ static void* FEX_rp_mmap(size_t size, size_t alignment, size_t* offset, size_t* 
 #endif
     prctl(PR_SET_VMA, PR_SET_VMA_ANON_NAME, ptr, map_size, global_config.page_name);
 
+#ifdef MADV_NOHUGEPAGE
     // Disable HUGEPAGE on allocation from rpmalloc.
     madvise(ptr, map_size, MADV_NOHUGEPAGE);
+#endif
   }
 
   if (ptr == nullptr) {

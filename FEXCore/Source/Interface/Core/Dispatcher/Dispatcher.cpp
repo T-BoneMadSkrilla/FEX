@@ -4,6 +4,7 @@
 #include "Interface/Context/Context.h"
 #include "Interface/Core/CPUBackend.h"
 #include "Interface/Core/Dispatcher/Dispatcher.h"
+#include <FEXCore/Utils/JITWriteScope.h>
 #include "Interface/Core/LookupCache.h"
 #include "Utils/MemberFunctionToPointer.h"
 
@@ -52,6 +53,7 @@ Dispatcher::~Dispatcher() {
 }
 
 void Dispatcher::EmitDispatcher() {
+  FEXCore::Utils::JITWriteScope JITWrite;
   // Don't modify TMP3 since it contains our RIP once the block doesn't exist
   auto RipReg = TMP3;
 #ifdef VIXL_DISASSEMBLER

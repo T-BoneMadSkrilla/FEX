@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+#include <FEXCore/Utils/JITWriteScope.h>
 #include "Utils/crc32.h"
 #include "FEXCore/Utils/LogManager.h"
 #include "FEXCore/Utils/MathUtils.h"
@@ -256,7 +257,7 @@ void CodeMapWriter::AppendData(std::span<const std::byte> Data) {
     }
     if (!IsResponsibleForFlush) {
       // Wait for the buffer to be flushed on the responsible thread
-      Utils::SpinWaitLock::WaitPred<std::less_equal<>, size_t>(reinterpret_cast<size_t*>(&BufferOffset), Buffer.size());
+      Utils::SpinWaitLock::WaitPred<std::less_equal<>, uint64_t>(reinterpret_cast<uint64_t*>(&BufferOffset), Buffer.size());
     }
     AppendData(Data);
     return;
@@ -942,8 +943,9 @@ void CodeCache::FinalizeCodePages(MappedCodeCacheFile& Code, std::span<std::byte
                      "Inconsistent page load state");
 
   FEXCORE_PROFILE_SCOPED("FinalizeCodePages");
+  FEXCore::Utils::JITWriteScope JITWrite;
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__APPLE__)
   // Atomicity is critical when making the finalized code data visible.
   // We ensure this by remapping a temporary buffer onto the PROT_NONE
   // placeholder page in CodeBuffer. Some constraints to keep in mind are:
@@ -987,8 +989,8 @@ void CodeCache::FinalizeCodePages(MappedCodeCacheFile& Code, std::span<std::byte
   // Release resident file pages that will no longer be needed. The VA range is left allocated to allow cleanup with a single VirtualFree.
   Allocator::VirtualDontNeed(Code.CodeBufferInFile.data() + StartOffset, Size);
 #else
-  // TODO: Implement lazy mapping on Windows
-#ifdef _M_ARM64EC
+  // TODO: Implement lazy mapping on Windows and Darwin (no mremap)
+#if defined(_M_ARM64EC) || defined(__APPLE__)
   memcpy(Code.CodeBuffer.data() + StartOffset, Code.CodeBufferInFile.data() + StartOffset, Size);
 #endif
   for (size_t i = StartPage; i < EndPage; ++i) {

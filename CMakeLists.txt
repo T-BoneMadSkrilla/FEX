@@ -61,7 +61,7 @@ if (NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   message(FATAL_ERROR "Unsupported pointer size ${CMAKE_SIZEOF_VOID_P}."
     " FEX only supports 64-bit (8-byte pointer) systems."
     " If you believe this is in error, file an issue.")
-elseif (NOT (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Android"))
+elseif (NOT (WIN32 OR APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Android"))
   message(FATAL_ERROR "Unsupported system type ${CMAKE_SYSTEM_NAME}."
     " FEX only supports Linux, Android and Windows."
     " If you believe this is in error, file an issue.")

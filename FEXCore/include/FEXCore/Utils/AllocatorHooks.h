@@ -4,7 +4,10 @@
 #include <FEXCore/Utils/EnumOperators.h>
 #include <FEXCore/Utils/LogManager.h>
 
-#ifndef _WIN32
+#if defined(__APPLE__)
+#include <stdlib.h>
+#include <sys/mman.h>
+#elif !defined(_WIN32)
 #include <stdlib.h>
 #include <malloc.h>
 #include <sys/mman.h>
@@ -113,12 +116,21 @@ FEX_DEFAULT_VISIBILITY extern void VirtualName(const char* Name, void* Ptr, size
 
 // All commit parameters are ignored here, they are unnecessary as Linux supports overcommit
 
+#ifdef __APPLE__
+// RWX needs MAP_JIT on Apple silicon (writes then go through Utils::JITWriteScope).
+constexpr int JIT_MAP_FLAG = MAP_JIT;
+#else
+constexpr int JIT_MAP_FLAG = 0;
+#endif
+
 inline void* VirtualAlloc(size_t Size, bool Execute = false, bool Commit = true) {
-  return FEXCore::Allocator::mmap(nullptr, Size, PROT_READ | PROT_WRITE | (Execute ? PROT_EXEC : 0), MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  return FEXCore::Allocator::mmap(nullptr, Size, PROT_READ | PROT_WRITE | (Execute ? PROT_EXEC : 0),
+                                  MAP_PRIVATE | MAP_ANONYMOUS | (Execute ? JIT_MAP_FLAG : 0), -1, 0);
 }
 
 inline void* VirtualAlloc(void* Base, size_t Size, bool Execute = false, bool Commit = true) {
-  return FEXCore::Allocator::mmap(Base, Size, PROT_READ | PROT_WRITE | (Execute ? PROT_EXEC : 0), MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  return FEXCore::Allocator::mmap(Base, Size, PROT_READ | PROT_WRITE | (Execute ? PROT_EXEC : 0),
+                                  MAP_PRIVATE | MAP_ANONYMOUS | (Execute ? JIT_MAP_FLAG : 0), -1, 0);
 }
 
 inline void VirtualFree(void* Ptr, size_t Size) {
@@ -143,7 +155,9 @@ inline bool VirtualProtect(void* Ptr, size_t Size, ProtectOptions options) {
 }
 
 inline void VirtualTHPControl(const void* Ptr, size_t Size, THPControl Control) {
+#ifndef __APPLE__
   ::madvise(const_cast<void*>(Ptr), Size, Control == THPControl::Enable ? MADV_HUGEPAGE : MADV_NOHUGEPAGE);
+#endif
 }
 
 #endif

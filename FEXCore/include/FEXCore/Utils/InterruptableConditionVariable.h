@@ -5,7 +5,9 @@
 #include <chrono>
 #include <climits>
 #include <cstdint>
-#ifndef _WIN32
+#if defined(__APPLE__)
+#include <FEXCore/Utils/AppleFutex.h>
+#elif !defined(_WIN32)
 #include <linux/futex.h>
 #include <sys/syscall.h>
 #else
@@ -37,6 +39,11 @@ public:
         return true;
       }
 
+#ifdef __APPLE__
+      if (!AppleFutex::Wait(reinterpret_cast<uint32_t*>(&Mutex), Desired, Timeout)) {
+        return false;
+      }
+#else
       constexpr int Op = FUTEX_WAIT | FUTEX_PRIVATE_FLAG;
       // WAIT will keep sleeping on the futex word while it is `val`
       int Result = ::syscall(SYS_futex, &Mutex, Op,
@@ -48,6 +55,7 @@ public:
       if (Timeout && Result == -1 && errno == ETIMEDOUT) {
         return false;
       }
+#endif
     }
   }
 
@@ -80,6 +88,14 @@ private:
 
     // If the mutex was in an unsignaled state then signal
     if (Mutex.compare_exchange_strong(Expected, Desired)) {
+#ifdef __APPLE__
+      if (Waiters == 1) {
+        AppleFutex::WakeOne(reinterpret_cast<uint32_t*>(&Mutex));
+      } else {
+        AppleFutex::WakeAll(reinterpret_cast<uint32_t*>(&Mutex));
+      }
+      return;
+#endif
       constexpr int Op = FUTEX_WAKE | FUTEX_PRIVATE_FLAG;
 
       ::syscall(SYS_futex, &Mutex, Op,

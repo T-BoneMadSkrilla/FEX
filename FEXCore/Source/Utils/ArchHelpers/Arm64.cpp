@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+#include <FEXCore/Utils/JITWriteScope.h>
 
 #include "Interface/Core/CPUBackend.h"
 #include "Interface/Context/Context.h"
@@ -2104,6 +2105,7 @@ std::optional<int32_t> HandleUnalignedAccess(FEXCore::Core::InternalThreadState*
   // Due to code buffer sharing between threads, code must be carefully backpatched from last to first.
   // Multiple threads can be attempting to handle the SIGBUS or even be executing the code being backpatched.
   FEXCore::Utils::SpinWaitLock::UniqueSpinMutex lk(&InlineTail->SpinLockFutex);
+  FEXCore::Utils::JITWriteScope JITWrite;
 
   if ((Instr & LDAXR_MASK) == LDAR_INST ||  // LDAR*
       (Instr & LDAXR_MASK) == LDAPR_INST) { // LDAPR*

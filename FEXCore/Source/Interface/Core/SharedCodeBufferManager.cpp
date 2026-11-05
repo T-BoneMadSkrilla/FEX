@@ -18,11 +18,27 @@ namespace FEXCore::CPU {
 static constexpr size_t INITIAL_CODE_SIZE = 1024 * 1024 * 64;
 // We don't want to move above 128MB atm because that means we will have to encode longer jumps
 static constexpr size_t MAX_CODE_SIZE = 1024 * 1024 * 128;
+// haku: past the guard page, room for the host's own code a branch from the
+// buffer's reaches (vm16k's access stubs), published in fex_code_tail.
+static constexpr size_t HOST_TAIL_SIZE = 1024 * 1024 * 8;
+} // namespace FEXCore::CPU
 
+extern "C" {
+struct FexCodeTail {
+  void* base;
+  size_t size;
+  uint64_t gen;
+} fex_code_tail;
+}
+
+namespace FEXCore::CPU {
 CodeBuffer::CodeBuffer(size_t Size, bool ShouldBeNamed)
   : AllocatedSize(Size) {
-  Ptr = static_cast<uint8_t*>(FEXCore::Allocator::VirtualAlloc(Size, true));
+  Ptr = static_cast<uint8_t*>(FEXCore::Allocator::VirtualAlloc(Size + HOST_TAIL_SIZE, true));
   LOGMAN_THROW_A_FMT(!!Ptr, "Couldn't allocate code buffer");
+  fex_code_tail.base = Ptr + Size;
+  fex_code_tail.size = HOST_TAIL_SIZE;
+  __atomic_store_n(&fex_code_tail.gen, fex_code_tail.gen + 1, __ATOMIC_RELEASE);
 
   // Protect the last page of the allocated buffer to trigger SIGSEGV on write access
   uintptr_t LastPageAddr = AlignDown(reinterpret_cast<uintptr_t>(Ptr) + Size - 1, FEXCore::Utils::FEX_HOST_PAGE_SIZE);
@@ -45,7 +61,7 @@ CodeBuffer::CodeBuffer(size_t Size, bool ShouldBeNamed)
 }
 
 CodeBuffer::~CodeBuffer() {
-  FEXCore::Allocator::VirtualFree(Ptr, AllocatedSize);
+  FEXCore::Allocator::VirtualFree(Ptr, AllocatedSize + HOST_TAIL_SIZE);
 }
 
 SharedCodeBufferManager::SharedCodeBufferManager() {

@@ -214,6 +214,11 @@ public:
    * so far. Thread safe.
    */
   FEX_DEFAULT_VISIBILITY virtual void EnableX87SinglePrecision() = 0;
+  /**
+   * @brief haku: back to the reduced x87 without it, for the next title of an in-place reboot
+   * (the code cache cleared with it).
+   */
+  FEX_DEFAULT_VISIBILITY virtual void DisableX87SinglePrecision() = 0;
 
   /**
    * @brief haku: hooked guest addresses (system mode). Fn is asked at translation time

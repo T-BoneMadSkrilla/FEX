@@ -500,6 +500,9 @@ public:
   void EnableX87SinglePrecision() override {
     X87SinglePrecision.store(true, std::memory_order_relaxed);
   }
+  void DisableX87SinglePrecision() override {
+    X87SinglePrecision.store(false, std::memory_order_relaxed);
+  }
 
   // haku: see Context::EnableSystemOps / SetGuestCycleCounterRatio / SetIDTRegister / SetHookQuery
   // / EnableX87SinglePrecision.

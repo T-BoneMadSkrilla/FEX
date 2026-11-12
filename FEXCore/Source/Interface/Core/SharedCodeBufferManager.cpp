@@ -16,11 +16,15 @@ namespace FEXCore::CPU {
 // compiles them again (Conker filled 16 MiB in its first level: a 177 ms
 // frame); a guest's code fits well under it, and untouched pages cost nothing.
 static constexpr size_t INITIAL_CODE_SIZE = 1024 * 1024 * 64;
-// We don't want to move above 128MB atm because that means we will have to encode longer jumps
-static constexpr size_t MAX_CODE_SIZE = 1024 * 1024 * 128;
+// haku: 96 MiB, not 128: the tail must stay within a branch's reach (vm16k's
+// REACH, 120 MiB) of the buffer's first block. A 128 MiB buffer put the tail
+// past it for most of its code: no access stubs after the first clear, every
+// access to a trapped page a signal (Madden 08 at 40 fps from its 33rd minute).
+static constexpr size_t MAX_CODE_SIZE = 1024 * 1024 * 96;
 // haku: past the guard page, room for the host's own code a branch from the
 // buffer's reaches (vm16k's access stubs), published in fex_code_tail.
 static constexpr size_t HOST_TAIL_SIZE = 1024 * 1024 * 8;
+static_assert(MAX_CODE_SIZE + HOST_TAIL_SIZE < 1024 * 1024 * 120);
 } // namespace FEXCore::CPU
 
 extern "C" {
